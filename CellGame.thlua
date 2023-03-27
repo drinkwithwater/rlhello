@@ -1,0 +1,136 @@
+
+const CellGame = {}
+
+CellGame.__index=CellGame
+
+const KIND_GOOD = 0
+const KIND_BAD = 1
+const KIND_PLAYER = 2
+
+(@do
+	let.Pos = Struct{
+		x=Number,
+		y=Number,
+	}
+	let.Kind = Union(1,2,3)
+	let.GameObject = Struct {
+		id=Number,
+		pos=Pos,
+		kind=Kind,
+	}
+end)
+
+function:class(let.CellGame) CellGame.new()
+	local self = setmetatable({.class
+	_idGen = 0 @Number,
+	_playerObj = nil@!GameObject,
+	_objDict = {}@Dict(Number, GameObject),
+	_size = 10,
+	_frame = 0 @Number,
+	_done = false@Boolean
+}, CellGame)
+self:bornPlayer()
+return self
+end
+
+function CellGame:genId():Ret(Number)
+	self._idGen = self._idGen + 1
+	return self._idGen
+end
+
+function CellGame:bornBad()
+	local nId = self:genId()
+	self._objDict[nId] = {
+		pos={
+			x=1,
+			y=math.random(1,self._size),
+		},
+		id=nId,
+		kind=KIND_BAD,
+	}
+end
+
+function CellGame:bornPlayer()
+	local nId = self:genId()
+	self._playerObj = {
+		pos={
+			x=self._size,
+			y=self._size//2,
+		},
+		id=nId,
+		kind=KIND_PLAYER,
+	}
+	self._objDict[nId] = self._playerObj
+end
+
+function CellGame:step(vAction:Union(1,2)):Ret(Boolean, Integer)
+	if self._done or self._frame >= 1000 then
+		return true, 0
+	end
+	-- 1. check delete
+	local nDeleteIds:Dict(Number, True) = {}
+	local nLiveCount:Number = 0
+	local nCollide:Boolean = false
+	local nPlayer = self._playerObj
+	if vAction == 1 then
+		if nPlayer.pos.y < self._size then
+			nPlayer.pos.y = nPlayer.pos.y + 1
+		end
+	else
+		if nPlayer.pos.y > 1 then
+			nPlayer.pos.y = nPlayer.pos.y - 1
+		end
+	end
+	for id, obj in pairs(self._objDict) do
+		if obj.kind == KIND_PLAYER then
+		else
+			local nObjPos = obj.pos
+			if nObjPos.x >= self._size then
+				nDeleteIds[id] = true
+			else
+				nObjPos.x = nObjPos.x + 1
+				if nObjPos.x == nPlayer.pos.x and nObjPos.y == nPlayer.pos.y then
+					nCollide = true
+					nDeleteIds[obj.id] = true
+				else
+					nLiveCount = nLiveCount + 1
+				end
+			end
+		end
+	end
+	-- 2. rm delete ids
+	for id, _ in pairs(nDeleteIds) do
+		self._objDict[id] = nil
+	end
+	-- 3. if step more than living count, then create new
+	if nLiveCount <= 2*self._frame // 10 then
+		self:bornBad()
+	end
+	self._frame = self._frame + 1
+	if nCollide then
+		self._done = true
+		return false, 0
+	else
+		return false, 1
+	end
+end
+
+function CellGame:dump()
+	local arr:List(List(String)) = {}
+	for x=1, self._size do
+		local line:List(String) = {}
+		for y=1, self._size do
+			line[y] = " "
+		end
+		arr[x] = line
+	end
+	for id, obj in pairs(self._objDict) do
+		arr[obj.pos.x]![obj.pos.y] = tostring(obj.kind)
+	end
+	print("================")
+	for x=1, self._size do
+		print(table.concat(arr[x]!))
+	end
+end
+
+return CellGame
