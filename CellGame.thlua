@@ -115,22 +115,24 @@ function CellGame:step(vAction:Union(1,2)):Ret(Boolean, Integer)
 	end
 end
 
+
 function CellGame:dump()
-	local arr:List(List(String)) = {}
+	local arr:List(List(Integer)) = {}
 	for x=1, self._size do
-		local line:List(String) = {}
+		local line:List(Integer) = {}
 		for y=1, self._size do
-			line[y] = " "
+			line[y] = KIND_GOOD
 		end
 		arr[x] = line
 	end
 	for id, obj in pairs(self._objDict) do
-		arr[obj.pos.x]![obj.pos.y] = tostring(obj.kind)
+		arr[obj.pos.x]![obj.pos.y] = obj.kind
 	end
-	print("================")
-	for x=1, self._size do
-		print(table.concat(arr[x]!))
-	end
+	return arr
+	--print("================")
+	--for x=1, self._size do
+		--print(table.concat(arr[x]!))
+	--end
 end
 
 return CellGame

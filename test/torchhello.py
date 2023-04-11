@@ -50,8 +50,11 @@ def train():
             print("step, loss:", i, loss)
 
 
-train()
-train()
+#train()
+#train()
+
+print(model.state_dict())
+
 
 #loss_fn = nn.CrossEntropyLoss()
 #optimizer = torch.optim.SGD(mode.parameters(), lr=1e-3)

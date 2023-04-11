@@ -17,12 +17,8 @@ function CMD.step(vAction)
     return mGame:step(vAction)
 end
 
-function CMD.step(vAction)
-    return mGame:step(vAction)
-end
-
 function CMD.dump()
-	mGame:dump()
+	return mGame:dump()
 end
 
 pyskynet.start(function()
