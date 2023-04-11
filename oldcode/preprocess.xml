@@ -1,0 +1,291 @@
+
+<?lua
+
+local feature_config, action_space = ...
+
+local util = require "prep_utils"
+
+local hg_config = {
+	dict_heroId2index = nil,
+	dict_skillId2index = nil,
+	dict_totemId2index = nil,
+	hero_types = nil,
+	skill_types = nil,
+	totem_types = nil
+}
+
+local function xprint(...)
+	print("xprint:"..select("#", ...), ...)
+	return ...
+end
+?>
+
+<var local="self, ob, action, f_reward">...</var>
+<var local="selfHeroObs, oppoHeroObs"><?lua
+    local a,b
+	-- local utils = require "pyskynet.utils"
+    for _, heroObs in ipairs(ob.hero_observation) do
+        if heroObs.hero_property.user_index == self.user_index then
+            a = heroObs
+        else
+            b = heroObs
+        end
+    end
+    return a, b
+?></var>
+
+<table>
+<arr name="global" dtype="float32" shape="feature_config.global_feature_size">
+    <var local="key_table"><?lua
+        local re = {}
+        for key,_ in pairs(f_reward) do
+        re[#re + 1] = key
+        end
+        table.sort(re)
+        return re
+    ?></var>
+    <float32>table.unpack(util._position_embed(ob.state_curr_framecount, feature_config["position_embed_size"]))</float32>
+    <float32 for="i=1,#key_table">f_reward[key_table[i]]</float32>
+</arr>
+
+<arr name="prev_action" dtype="float32" shape="2">
+    <float32>action[1], action[2]</float32>
+</arr>
+
+<arr name="heroes" dtype="float32"> <!-- shape="2,feature_config.hero_feature_size"-->
+    <var local="base_rho">math.floor(math.atan(self.self_pos[1], self.self_pos[2]) / math.pi * 180)</var>
+    <arr for="i,heroObs in ipairs({selfHeroObs, oppoHeroObs})">
+        <float32> i-1 </float32>
+        <var local="heroProperty, heroSkill"> heroObs.hero_property, heroObs.hero_skill</var>
+        <var local="dx,dz,rho_int,rho"><?lua
+            local dx, dz = heroProperty.hero_x, heroProperty.hero_z
+            local rho_int = math.floor(math.atan(dx, dz) / Pi * 180)
+            local rho = util._cal_relative_angle(rho_int, base_rho)
+            return dx, dz, rho_int, rho
+        ?></var>
+        <block len="17">
+            <float32> math.sin(rho), math.cos(rho) </float32>
+            <float32> table.unpack(util._relative_angle_one_hot(rho, feature_config.angle_embed_size)) </float32>
+            <var local="dis"> math.min(math.sqrt(dx * dx + dz * dz), 25.) </var>
+            <float32> dis/25.0 </float32>
+            <float32> table.unpack(util._power_embed(dis, 0.0, 25.0, feature_config.radius_embed_size)) </float32>
+        </block>
+        <float32 len="12"> table.unpack(util._lidar_embed(dx, dz, self.camera)) </float32>
+        <var local="dx,dz,rho_int,rho"><?lua
+            local dx, dz = heroProperty.hero_x - self.self_pos[1], heroProperty.hero_z - self.self_pos[2]
+			dx = math.min(math.max(dx, -25), 25)
+			dz = math.min(math.max(dz, -25), 25)
+            local rho_int = math.floor(math.atan(dx, dz) / Pi * 180)
+            local rho = util._cal_relative_angle(rho_int, base_rho)
+            return dx, dz, rho_int, rho
+        ?></var>
+        <block len="17">
+            <float32> math.sin(rho), math.cos(rho) </float32>
+            <float32> table.unpack(util._relative_angle_one_hot(rho, feature_config.angle_embed_size)) </float32>
+            <var local="dis"> math.min(math.sqrt(dx * dx + dz * dz), 25.) </var>
+            <float32> dis/25.0 </float32>
+            <float32> table.unpack(util._power_embed(dis, 0.0, 25.0, feature_config.radius_embed_size)) </float32>
+        </block>
+
+        <block len="7">
+            <var local="hero_y"> util._clip(heroProperty.hero_y, 0.0, 25.0) </var>
+            <float32> hero_y/25.0 </float32>
+            <float32> table.unpack(util._power_embed(hero_y, 0.0, 25.0, feature_config.radius_embed_size)) </float32>
+        </block>
+
+        <block len="7">
+            <float32> heroProperty.hero_collision_box_radius </float32>
+            <float32> table.unpack(util._power_embed(heroProperty.hero_hit_box_radius, 0.0, 3.0, feature_config.radius_embed_size//2, 1.0)) </float32>
+            <float32> table.unpack(util._power_embed(heroProperty.hero_height, 0.0, 3.0, feature_config.radius_embed_size//2, 1.0)) </float32>
+        </block>
+
+        <block len="10">
+            <var local="hero_angle">util._cal_relative_angle(heroProperty.hero_direction, self.camera)</var>
+            <float32> math.sin(hero_angle), math.cos(hero_angle) </float32>
+            <float32> table.unpack(util._relative_angle_one_hot(hero_angle, feature_config.angle_embed_size)) </float32>
+        </block>
+
+        <block len="50">
+            <float32> heroProperty.hero_hp / heroProperty.hero_hp_max </float32>
+            <float32> table.unpack(util._power_embed(heroProperty.hero_hp, 0.0, heroHpMax, heroHpSize)) </float32>
+            <float32> heroProperty.hero_mp / heroMpMax </float32>
+            <float32> table.unpack(util._power_embed(heroProperty.hero_mp, 0.0, heroMpMax, heroMpSize)) </float32>
+            <float32> heroProperty.hero_burst_energy / heroBurstEnergyMax </float32>
+            <float32> table.unpack(util._power_embed(heroProperty.hero_burst_energy, 0.0, heroBurstEnergyMax, heroBurstEnergySize)) </float32>
+            <float32> heroProperty.hero_dodage / heroDodageMax </float32>
+            <float32> table.unpack(util._power_embed(heroProperty.hero_dodage, 0.0, heroDodageMax, heroDodageSize)) </float32>
+            <float32> heroProperty.hero_shield / heroShieldMax </float32>
+            <float32> table.unpack(util._power_embed(heroProperty.hero_shield, 0.0, heroShieldMax, heroShieldSize)) </float32>
+            <float32> <?lua
+                if heroProperty.hero_friendship_skill_count <= 2 then
+                    return table.unpack(util._one_hot_embed(heroProperty.hero_friendship_skill_count, 3))
+                elseif heroProperty.hero_friendship_skill_count == 3 then
+                    return 0.0, 1.0, 1.0
+                end
+            ?> </float32>
+        </block>
+		<var local="heroAction"> heroObs.hero_action </var>
+        <block len="27">
+            <float32> heroAction.state_base_standby, heroAction.state_base_run </float32>
+            <float32> table.unpack(util._one_hot_embed(heroAction.state_passive_abnormal, 6)) </float32>
+            <float32> table.unpack(util._one_hot_embed(heroAction.state_passive_attacked, 5)) </float32>
+            <float32> table.unpack(util._one_hot_embed(heroAction.state_use_skill, 5)) </float32>
+            <float32> table.unpack(util._power_embed(util._clip(heroAction.state_move_speed, 0.0, 16.0), 0.0, 16.0, 6, 1.0)) </float32>
+            <float32> table.unpack(util._power_embed(heroAction.state_hero_speed, 0.0, 2.0, 3, 1.0)) </float32>
+        </block>
+
+        <block len="10">
+            <var local="move_angle"> util._cal_relative_angle(heroAction.state_hero_move_direction, self.camera) </var>
+            <float32> math.sin(move_angle), math.cos(move_angle) </float32>
+            <float32> table.unpack(util._relative_angle_one_hot(move_angle, feature_config.angle_embed_size)) </float32>
+        </block>
+        <var local="heroBuff"> heroObs.hero_buff </var>
+        <block len="15">
+            <float32>
+                heroBuff.buff_move_control and 1.0 or 0.0 ,
+                heroBuff.buff_hurt_fly_control and 1.0 or 0.0 ,
+                heroBuff.buff_cast_skill_control and 1.0 or 0.0 ,
+                heroBuff.buff_be_hurt_control and 1.0 or 0.0 ,
+                heroBuff.buff_be_attacked_control and 1.0 or 0.0 ,
+                heroBuff.buff_be_grab_control and 1.0 or 0.0 ,
+                heroBuff.buff_be_damage_control and 1.0 or 0.0 ,
+                heroBuff.buff_hp_zero_control and 1.0 or 0.0 ,
+                heroBuff.buff_be_shield_control and 1.0 or 0.0 ,
+                heroBuff.buff_be_anger_control and 1.0 or 0.0 ,
+                heroBuff.buff_be_endure_control and 1.0 or 0.0 ,
+                heroBuff.buff_be_dodge_control and 1.0 or 0.0 ,
+                heroBuff.buff_be_counter_control and 1.0 or 0.0 ,
+                heroBuff.buff_be_focus_control and 1.0 or 0.0 ,
+                heroBuff.buff_burst_energy_control and 1.0 or 0.0
+            </float32>
+        </block>
+    </arr> 
+</arr>
+
+<arr name="heroes_category" dtype="float32" shape="2">
+    <int32 for="_,heroObs in ipairs({selfHeroObs, oppoHeroObs})"><?lua
+		local hero_index = hg_config.dict_heroId2index[heroObs.hero_property.hero_id // 10] or 0
+        return hero_index
+    ?></int32>
+</arr>
+
+<arr name="hero_skills" dtype="float32"><!-- shape="22, feature_config.hero_skill_feature_size"-->
+    <block for="_, heroObs in ipairs({selfHeroObs, oppoHeroObs})">
+        <var local="count">0</var>
+        <arr for="i, skill_state in ipairs(heroObs.hero_skill.skill_state)"
+			if="not ((skill_state.skill_slot == 0) or (skill_state.skill_slot==1 and not skill_state.castable))">
+			<float32>table.unpack(util._one_hot_embed(skill_state.skill_slot, self.action_space[2]))</float32>
+            <float32>skill_state.castable and 1 or 0</float32>
+            <float32>skill_state.ischarge and 1 or 0</float32>
+            <float32>skill_state.skill_remain_cd / skill_state.skill_full_cd</float32>
+            <float32>table.unpack(util._power_embed(skill_state.skill_remain_cd, 0.0, 2700.0, 10)) </float32>
+            <proc>count = count + 1</proc>
+        </arr>
+        <arr for="i = 1, 11 - count">
+            <float32 for="j=1, feature_config.hero_skill_feature_size"> 1e-9 </float32>
+        </arr>
+    </block>
+</arr>
+
+<arr name="hero_skills_category" dtype="float32" shape="22">
+    <block for="_, heroObs in ipairs({selfHeroObs, oppoHeroObs})">
+        <var local="count">0</var>
+        <float32 for="i, skill_state in ipairs(heroObs.hero_skill.skill_state)"
+            if="not ((skill_state.skill_slot == 0) or (skill_state.skill_slot==1 and not skill_state.castable))">
+            <?lua
+                count = count + 1
+                local skill_index = hg_config.dict_skillId2index[skill_state.skill_id] or 0
+                return skill_index
+            ?>
+        </float32>
+        <float32 for="i = 1, 11 - count"> 0 </float32>
+    </block>
+</arr>
+
+<arr name="boxes" dtype="float32"><!-- shape="10, feature_config.box_feature_size"-->
+	<var local="box_counter">0</var>
+    <var local="base_rho">math.floor(math.atan(self.self_pos[1], self.self_pos[2]) / math.pi * 180)</var>
+    <arr for="i, box in ipairs(ob.attack_box or {})">
+		<proc>box_counter = box_counter + 1</proc>
+        <float32>box.attack_box_user_index == self.user_index and 0 or 1</float32>
+        <float32>table.unpack(util._one_hot_embed(box.attack_box_type, 4))</float32>
+        <float32>table.unpack(util._one_hot_embed(box.attack_box_shape, 4))</float32>
+		<var function="n_dx_dz_rho_next(t, n)"><?lua
+            if n == 0 then
+                local dx, dz = box.attack_box_x, box.attack_box_z
+                local rho = math.floor(math.atan(dx, dz) / math.pi * 180)
+                rho = util._cal_relative_angle(rho, base_rho)
+                return 1, dx, dz, rho
+            elseif n == 1 then
+                local dx = util._clip(box.attack_box_x - self.self_pos[1], -25.0, 25.0)
+                local dz = util._clip(box.attack_box_z - self.self_pos[2], -25.0, 25.0)
+                local rho = math.floor(math.atan(dx, dz) / math.pi * 180)
+                rho = util._cal_relative_angle(rho, base_rho)
+                return 2, dx, dz, rho
+            else
+                return nil
+            end
+		?></var>
+        <block for="_, dx, dz, rho in n_dx_dz_rho_next, nil, 0">
+            <float32>math.sin(rho), math.cos(rho)</float32>
+            <float32>table.unpack(util._relative_angle_one_hot(rho, feature_config.angle_embed_size))</float32>
+            <var local="dis"> math.min(math.sqrt(dx^2 + dz^2), 25) </var>
+            <float32>dis/25.0 </float32>
+            <float32>table.unpack(util._power_embed(dis, 0.0, 25.0, feature_config.radius_embed_size))</float32>
+        </block>
+
+        <proc>box.attack_box_y = util._clip(box.attack_box_y, 0, 25)</proc>
+        <float32>box.attack_box_y / 25</float32>
+        <float32>table.unpack(util._power_embed(box.attack_box_y, 0, 25, feature_config.radius_embed_size))</float32>
+        <float32>table.unpack(util._power_embed(box.attack_box_r, 0, 25, 8))</float32>
+        <float32>table.unpack(util._power_embed(box.attack_box_s, 0, 999, 8))</float32>
+
+        <var local="box_angle">util._cal_relative_angle(box.attack_box_direction, self.camera)</var>
+        <float32>math.sin(box_angle), math.cos(box_angle)</float32>
+        <float32>table.unpack(util._relative_angle_one_hot(box_angle, feature_config.angle_embed_size))</float32>
+
+        <block for="i,heroObs in ipairs({selfHeroObs, oppoHeroObs})">
+			<var local="dx, dz, angle"><?lua
+                local dx = box.attack_box_x - heroObs.hero_property.hero_x
+                local dz = box.attack_box_z - heroObs.hero_property.hero_z
+                local angle = math.floor(math.atan(dx, dz) / math.pi * 180)
+                angle = util._cal_relative_angle(angle, self.camera)
+                return dx, dz, angle
+			?></var>
+            <float32> math.sin(angle), math.cos(angle) </float32>
+            <float32> table.unpack(util._relative_angle_one_hot(angle, feature_config.angle_embed_size)) </float32>
+            <var local="dis"> math.min(math.sqrt(dx^2 + dz^2), 25)</var>
+            <float32> dis / 25.0 </float32>
+            <float32> table.unpack(util._power_embed(dis, 0.0, 25.0, feature_config.radius_embed_size)) </float32>
+        </block>
+    </arr>
+	<arr for="i = 1, 10-box_counter">
+		<float32 for="j=1, feature_config.box_feature_size"> 1e-9 </float32>
+	</arr>
+</arr>
+
+<var local="available_count">1</var>
+<arr name="available_skills" dtype="float32"><!-- shape="action_space.nvec[1]"-->
+	<float32>1</float32>
+	<float32 for="i, skill_state in ipairs(selfHeroObs.hero_skill.skill_state)"
+		if="skill_state.skill_slot > 0 and skill_state.castable and hg_config.dict_skillId2index[skill_state.skill_id]">
+		<?lua
+			available_count = available_count + 1
+			local skill_index = hg_config.dict_skillId2index[skill_state.skill_id]
+			self.dict_skillIndex2Slot[skill_index] = skill_state.skill_slot
+			return skill_index
+		?>
+	</float32>
+	<float32 for="i = 1, 12 - available_count"> 0 </float32>
+</arr>
+
+<arr name="action_mask" dtype="float32"><!-- shape="(function () local count = 0 for i=1,#action_space.nvec do count = count + action_space.nvec[i] end return count end)()"-->
+	<float32 for="i=1, self.action_space[1]">1.0</float32>
+    <float32 for="i=1, available_count">1</float32>
+    <float32 for="i=1, 12-available_count">0</float32>
+</arr>
+
+<arr name="meta" dtype="float32" shape="8">
+    <float32>table.unpack(self.meta)</float32>
+</arr>
+</table>
